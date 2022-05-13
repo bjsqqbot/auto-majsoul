@@ -84,6 +84,9 @@ func analysisPlayerWithRisk(playerInfo *model.PlayerInfo, mixedRiskTable riskTab
 			mixedRiskTable: mixedRiskTable,
 		}
 		r.printWaitsWithImproves13_oneRow()
+
+		fallthrough
+		// TODO 换牌阶段，需要返回三张最高权值的牌作为交换
 	case 2:
 		// 分析手牌
 		shanten, results14, incShantenResults14 := util.CalculateShantenWithImproves14(playerInfo)
@@ -91,6 +94,8 @@ func analysisPlayerWithRisk(playerInfo *model.PlayerInfo, mixedRiskTable riskTab
 		// 提示信息
 		if shanten == -1 {
 			color.HiRed("【已和牌】")
+			// 发送和牌消息
+			middleware.MQ.Send(middleware.MeldMessage{Long: true})
 		} else if shanten == 0 {
 			if len(results14) > 0 {
 				r13 := results14[0].Result13
@@ -112,8 +117,8 @@ func analysisPlayerWithRisk(playerInfo *model.PlayerInfo, mixedRiskTable riskTab
 		bestCard, reach := printResults14WithRisk(results14, mixedRiskTable)
 		// printResults14WithRisk(incShantenResults14, mixedRiskTable)
 
-		// 发送手牌消息
-		m := middleware.TileMessage{
+		// 发送何切消息
+		m := middleware.SelfDrawMessage{
 			HandTile34: playerInfo.HandTiles34,
 			TileGot:    t,
 			BestCard:   bestCard,
@@ -169,6 +174,8 @@ func analysisMeld(playerInfo *model.PlayerInfo, targetTile34 int, isRedFive bool
 	// TODO: 局收支相近时，提示：局收支相近，追求和率打xx，追求打点打xx
 	if shanten == -1 {
 		color.HiRed("【已和牌】")
+		// 发送和牌消息
+		middleware.MQ.Send(middleware.MeldMessage{Long: true})
 	} else if shanten <= 1 {
 		// 鸣牌后听牌或一向听，提示型听
 		if len(results14) > 0 && results14[0].LeftDrawTilesCount > 0 && results14[0].LeftDrawTilesCount <= 16 {
@@ -181,6 +188,11 @@ func analysisMeld(playerInfo *model.PlayerInfo, targetTile34 int, isRedFive bool
 	// 鸣牌何切分析结果
 	printResults14WithRisk(results14, mixedRiskTable)
 	printResults14WithRisk(incShantenResults14, mixedRiskTable)
+
+	// 发送鸣牌消息
+	m := middleware.MeldMessage{}
+	middleware.MQ.Send(m)
+
 	return nil
 }
 

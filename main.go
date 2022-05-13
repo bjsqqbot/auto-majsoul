@@ -38,7 +38,6 @@ func main() {
 
 func LoadEnv() {
 	if err := godotenv.Load(".env"); err == nil {
-		CodejsUrl = os.Getenv("CODEJS_URL")
 		CacheDir = os.Getenv("CACHE_DIR")
 		if w, err := strconv.Atoi(os.Getenv("WINDOW_WIDTH")); err == nil {
 			WindowWidth = w
@@ -48,6 +47,9 @@ func LoadEnv() {
 		}
 		if os.Getenv("ENABLE_AUTO_CLICK") == "FALSE" {
 			EnableAutoClick = false
+		}
+		if os.Getenv("CONSOLE_MODE") == "TRUE" {
+			WindowWidth += 555
 		}
 	}
 }
@@ -84,8 +86,48 @@ func RunMajsoul() {
 }
 
 func ListenMessageQueue(ctx context.Context) {
+	go ListenSelfDrawEvent(ctx)
+	go ListenMeldEvent(ctx)
+}
+
+// 自家鸣牌阶段
+func ListenMeldEvent(ctx context.Context) {
 	for {
-		m := middleware.MQ.Receive()
+		m := <-middleware.MQ.MeldCh
+
+		WaitForButton()
+
+		if m.Long {
+			Click(670, 490, ctx)
+			continue
+		}
+
+		Click(835, 490, ctx) // 跳过
+		// TODO 鸣牌阶段
+	}
+}
+
+// 自家何切阶段
+func ListenSelfDrawEvent(ctx context.Context) {
+	reachMode := false
+	gopool.Go(func() {
+		for {
+			if reachMode { // 立直后自动和牌
+				Click(670, 490, ctx)
+				time.Sleep(time.Second)
+			}
+		}
+	})
+	for {
+		m := <-middleware.MQ.SelfDrawCh
+
+		reachMode = false
+
+		if m.BestCard == -1 { // 立直后，-1表示自摸
+			WaitForButton()
+			Click(670, 490, ctx)
+			continue
+		}
 		handTile34 := append([]int{}, m.HandTile34...)
 		handTile34[m.TileGot]--
 		fmt.Println("当前牌序 ", util.Tiles34ToStr(m.HandTile34), " ", util.Tile34ToStr(m.TileGot))
@@ -119,28 +161,37 @@ func ListenMessageQueue(ctx context.Context) {
 		// fmt.Println(gameWidth, gameHeight)
 		// fmt.Println(windowWidth, windowHeight)
 
-		rand.Seed(time.Now().UnixNano())
-		waitTime := rand.Intn(1400) + 600
-		fmt.Printf("等待时间 %fs\n", float32(waitTime)/1000)
-		time.Sleep(time.Millisecond * time.Duration(waitTime))
+		WaitForButton()
 
+		// 立直
 		if m.Reach {
-			for i := 0; i < 5; i++ {
-				chromedp.Run(ctx, chromedp.MouseClickXY(670, 490))
-				time.Sleep(time.Microsecond * 5)
-			}
-			fmt.Println("Click 670 490")
+			reachMode = true
+			Click(670, 490, ctx)
 			time.Sleep(time.Millisecond * 100)
 		}
 
-		for i := 0; i < 5; i++ {
-			chromedp.Run(ctx, chromedp.MouseClickXY(posx, posy))
-			time.Sleep(time.Microsecond * 5)
-		}
-		fmt.Printf("Click %v %v\n", posx, posy)
+		Click(posx, posy, ctx)
 	}
 }
 
+// 点击(x,y)位置 ctx:窗口上下文
+func Click(x, y float64, ctx context.Context) {
+	for i := 0; i < 5; i++ {
+		chromedp.Run(ctx, chromedp.MouseClickXY(x, y))
+		time.Sleep(time.Microsecond * 5)
+	}
+	fmt.Printf("Click %v %v\n", x, y)
+}
+
+// 等待互动按钮出现 600ms~2000ms
+func WaitForButton() {
+	rand.Seed(time.Now().UnixNano())
+	waitTime := rand.Intn(1400) + 600
+	fmt.Printf("等待时间 %fs\n", float32(waitTime)/1000)
+	time.Sleep(time.Millisecond * time.Duration(waitTime))
+}
+
+// 拦截请求
 func ListenRequests(ctx context.Context) {
 	chromedp.ListenTarget(ctx, func(ev interface{}) {
 		switch ev := ev.(type) {
@@ -164,6 +215,10 @@ func MatchedCodejs(u string) bool {
 	return reg.Find([]byte(u)) != nil
 }
 
+// 设置重定向
+// location:重定向地址
+// reqId:所拦截的请求ID
+// e:窗口执行者上下文
 func SetRedirect(location string, reqId fetch.RequestID, e context.Context) {
 	fetchResp := fetch.ContinueResponse(reqId)
 	fetchResp.ResponseCode = 302

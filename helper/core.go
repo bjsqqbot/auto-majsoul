@@ -824,6 +824,9 @@ func (d *roundData) analysis() error {
 		}
 
 		if who == 0 {
+			// 取消自家立直看戏
+			player.isReached = false
+
 			// 特殊处理自家舍牌的情况
 			riskTables := d.analysisTilesRisk()
 			mixedRiskTable := riskTables.mixedRiskTable()
