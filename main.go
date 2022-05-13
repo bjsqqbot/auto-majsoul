@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/bjsqqbot/auto-majsoul/helper"
@@ -18,22 +19,43 @@ import (
 	"github.com/chromedp/cdproto/fetch"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
+	"github.com/joho/godotenv"
 )
 
-const (
-	CodejsUrl = "https://endlesscheng.gitee.io/public/js/majsoul/code-zh.js"
-	CacheDir  = "/cache"
+var (
+	CodejsUrl       string = "https://endlesscheng.gitee.io/public/js/majsoul/code-zh.js"
+	CacheDir        string = "cache"
+	WindowWidth     int    = 1280
+	WindowHeight    int    = 720
+	EnableAutoClick bool   = true
 )
 
 func main() {
+	LoadEnv()
 	go RunMajsoul()
 	helper.Run()
+}
+
+func LoadEnv() {
+	if err := godotenv.Load(".env"); err == nil {
+		CodejsUrl = os.Getenv("CODEJS_URL")
+		CacheDir = os.Getenv("CACHE_DIR")
+		if w, err := strconv.Atoi(os.Getenv("WINDOW_WIDTH")); err == nil {
+			WindowWidth = w
+		}
+		if h, err := strconv.Atoi(os.Getenv("WINDOW_HEIGHT")); err == nil {
+			WindowHeight = h
+		}
+		if os.Getenv("ENABLE_AUTO_CLICK") == "FALSE" {
+			EnableAutoClick = false
+		}
+	}
 }
 
 func RunMajsoul() {
 	dir, _ := os.Getwd()
 	options := []chromedp.ExecAllocatorOption{
-		chromedp.WindowSize(1280, 720),
+		chromedp.WindowSize(WindowWidth, WindowHeight),
 		chromedp.Flag("headless", false),
 		chromedp.Flag("disable-sync", false),
 		chromedp.UserDataDir(path.Join(dir, CacheDir)),
@@ -51,7 +73,7 @@ func RunMajsoul() {
 		fetch.Enable(),
 		chromedp.Navigate("https://game.maj-soul.com/1/"),
 		chromedp.ActionFunc(func(ctx context.Context) error {
-			gopool.Go(func() { ListenMessageQueue(ctx) })
+			go ListenMessageQueue(ctx)
 			return nil
 		}),
 		chromedp.WaitVisible(`div[class="List-item"]`),
@@ -64,16 +86,18 @@ func RunMajsoul() {
 func ListenMessageQueue(ctx context.Context) {
 	for {
 		m := middleware.MQ.Receive()
-		fmt.Println("手牌 ", m.HandTile34)
+		handTile34 := append([]int{}, m.HandTile34...)
+		handTile34[m.TileGot]--
+		fmt.Println("当前牌序 ", util.Tiles34ToStr(m.HandTile34), " ", util.Tile34ToStr(m.TileGot))
 		fmt.Println("进张 ", util.MahjongZH[m.TileGot])
 		if m.Reach {
 			fmt.Println("--------Reach-------")
 		}
 		fmt.Println("切 ", util.MahjongZH[m.BestCard])
 		// 计算手牌顺序和坐标
-		handTile34 := append([]int{}, m.HandTile34...)
-		handTile34[m.TileGot]--
-		fmt.Println("当前牌序 ", util.Tiles34ToStr(m.HandTile34), " ", util.Tile34ToStr(m.TileGot))
+		if !EnableAutoClick {
+			continue
+		}
 		posOffset := 0
 		for tileId, tileCount := range handTile34 {
 			if tileCount != 0 && tileId == m.BestCard {
@@ -81,20 +105,36 @@ func ListenMessageQueue(ctx context.Context) {
 			}
 			posOffset += tileCount
 		}
-		posx, posy := 230+55*(posOffset), 600
+		var posx, posy float64 = 230 + 55*(float64(posOffset)), 600
 		// 出牌
+
+		// TODO 根据当前分辨率修改坐标
+		// inner 1280x720 黑边+160+55*offset
+		// var gameWidth, gameHeight, windowNaviHeight float64 = 0, 0, 88
+		// chromedp.Run(ctx,
+		// 	chromedp.Evaluate(`(() => {return window.innerWidth})()`, &gameWidth),
+		// 	chromedp.Evaluate(`(() => {return window.innerHeight})()`, &gameHeight))
+		// windowHeight := gameHeight + windowNaviHeight
+		// windowWidth := windowHeight * 16 / 9
+		// fmt.Println(gameWidth, gameHeight)
+		// fmt.Println(windowWidth, windowHeight)
+
 		rand.Seed(time.Now().UnixNano())
-		time.Sleep(time.Millisecond * time.Duration(rand.Intn(1400)+600))
+		waitTime := rand.Intn(1400) + 600
+		fmt.Printf("等待时间 %fs\n", float32(waitTime)/1000)
+		time.Sleep(time.Millisecond * time.Duration(waitTime))
+
 		if m.Reach {
 			for i := 0; i < 5; i++ {
 				chromedp.Run(ctx, chromedp.MouseClickXY(670, 490))
 				time.Sleep(time.Microsecond * 5)
 			}
 			fmt.Println("Click 670 490")
+			time.Sleep(time.Millisecond * 100)
 		}
-		time.Sleep(time.Millisecond * 100)
+
 		for i := 0; i < 5; i++ {
-			chromedp.Run(ctx, chromedp.MouseClickXY(float64(posx), float64(posy)))
+			chromedp.Run(ctx, chromedp.MouseClickXY(posx, posy))
 			time.Sleep(time.Microsecond * 5)
 		}
 		fmt.Printf("Click %v %v\n", posx, posy)
