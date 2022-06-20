@@ -67,7 +67,7 @@ func analysisPlayerWithRisk(playerInfo *model.PlayerInfo, mixedRiskTable riskTab
 		t = playerInfo.DiscardTiles[len(playerInfo.DiscardTiles)-1]
 	}
 	fmt.Println("进张为 ", util.MahjongZH[t])
-	pretile = append([]int{}, playerInfo.HandTiles34...)
+	copy(pretile, playerInfo.HandTiles34)
 	//
 
 	fmt.Println(humanTiles)

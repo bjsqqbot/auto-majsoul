@@ -1,6 +1,6 @@
 module github.com/bjsqqbot/auto-majsoul
 
-go 1.17
+go 1.18
 
 require (
 	github.com/bytedance/gopkg v0.0.0-20220509134931-d1878f638986

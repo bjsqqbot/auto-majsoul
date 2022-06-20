@@ -73,7 +73,7 @@ func RunMajsoul() {
 	err := chromedp.Run(ctx,
 		network.Enable(),
 		fetch.Enable(),
-		chromedp.Navigate("https://game.maj-soul.com/1/"),
+		chromedp.Navigate("https://game.maj-soul.net/1/"),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			go ListenMessageQueue(ctx)
 			return nil
@@ -128,7 +128,8 @@ func ListenSelfDrawEvent(ctx context.Context) {
 			Click(670, 490, ctx)
 			continue
 		}
-		handTile34 := append([]int{}, m.HandTile34...)
+		handTile34 := make([]int, len(m.HandTile34))
+		copy(handTile34, m.HandTile34)
 		handTile34[m.TileGot]--
 		fmt.Println("当前牌序 ", util.Tiles34ToStr(m.HandTile34), " ", util.Tile34ToStr(m.TileGot))
 		fmt.Println("进张 ", util.MahjongZH[m.TileGot])
@@ -211,7 +212,7 @@ func ListenRequests(ctx context.Context) {
 }
 
 func MatchedCodejs(u string) bool {
-	reg := regexp.MustCompile(`^https://game\.maj\-soul\.com/[0-9]+/[a-zA-Z0-9\.]+/code\.js$`)
+	reg := regexp.MustCompile(`^https://game\.maj\-soul\.net/[0-9]+/[a-zA-Z0-9\.]+/code\.js$`)
 	return reg.Find([]byte(u)) != nil
 }
 
